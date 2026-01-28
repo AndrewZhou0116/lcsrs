@@ -1,0 +1,40 @@
+from __future__ import annotations
+import re
+from dataclasses import dataclass
+
+PHASE=re.compile(r"^\s*Phase\s*\d+\s*[:：]\s*(.+?)\s*$", re.I)
+PROB=re.compile(r"^\s*(?:【\+】\s*)?(\d+)\s+(.+?)\s*$")
+PLUS=re.compile(r"^\s*【\+】\s*")
+
+@dataclass
+class Item:
+    order:int
+    lc:int
+    title:str
+    phase:str|None
+    premium:int
+    starred:int
+
+def parse(text:str)->list[Item]:
+    phase=None
+    out=[]
+    order=0
+    for raw in text.splitlines():
+        line=raw.rstrip("\n")
+        if not line.strip():
+            continue
+        m=PHASE.match(line)
+        if m:
+            phase=m.group(1).strip()
+            continue
+        m2=PROB.match(line)
+        if not m2:
+            continue
+        order += 1
+        lc=int(m2.group(1))
+        title=m2.group(2).strip()
+        title=re.sub(r"\s*\(.*?\)\s*$","",title).strip()
+        premium=1 if "premium" in line.lower() else 0
+        starred=1 if PLUS.match(line) else 0
+        out.append(Item(order, lc, title, phase, premium, starred))
+    return out

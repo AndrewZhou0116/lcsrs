@@ -1,0 +1,34 @@
+from __future__ import annotations
+import re
+from dataclasses import dataclass
+
+PHASE_RE = re.compile(r"^\s*Phase\s*\d+\s*[:：]\s*(.+?)\s*$", re.IGNORECASE)
+ITEM_RE  = re.compile(r"^\s*(\d+)\s+(.+?)\s*$")
+
+@dataclass
+class Item:
+    lc: int
+    title: str
+    phase: str | None
+    plan_order: int
+
+def parse(text: str) -> list[Item]:
+    phase: str | None = None
+    out: list[Item] = []
+    order = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        m = PHASE_RE.match(line)
+        if m:
+            phase = m.group(1).strip()
+            continue
+        m = ITEM_RE.match(line)
+        if not m:
+            continue
+        lc = int(m.group(1))
+        title = m.group(2).strip()
+        order += 1
+        out.append(Item(lc=lc, title=title, phase=phase, plan_order=order))
+    return out

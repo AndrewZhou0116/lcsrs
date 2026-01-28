@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Always use python3; works even if "python" is missing
+exec python3 -m lcsrs.cli "$@"

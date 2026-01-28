@@ -1,0 +1,133 @@
+from __future__ import annotations
+import argparse
+import os
+from pathlib import Path
+
+from .util import today, now_iso, GRADE, db_path
+from . import db as DB
+from .import_plan import parse
+from .srs import SRS, sm2
+
+VERSION="0.1.0"
+
+def q_from(tok:str)->int:
+    t=tok.strip().lower()
+    if t.isdigit():
+        return max(0,min(5,int(t)))
+    if t in GRADE:
+        return GRADE[t].q
+    raise SystemExit("quality must be 0..5 or easy/hard/again")
+
+def fmt(r)->str:
+    due=r["due"] or "NEW"
+    star=" [+]" if int(r["starred"]) else ""
+    prem=" (P)" if int(r["premium"]) else ""
+    ph=r["phase"] or "-"
+    return f"{r['lc_num']:>4} {r['title']}{star}{prem} | {ph} | due={due} | reps={r['reps']} int={r['interval']} ease={float(r['ease']):.2f}"
+
+def cmd_init(a):
+    con=DB.connect(a.db); DB.init(con)
+    print(f"✅ DB ready: {a.db or db_path()}")
+
+def cmd_import(a):
+    con=DB.connect(a.db); DB.init(con)
+    items=parse(Path(a.file).read_text(encoding="utf-8"))
+    for it in items:
+        DB.upsert(con,it.order,it.lc,it.title,it.phase,it.premium,it.starred,now_iso())
+    print(f"✅ Imported: {len(items)}")
+
+def cmd_stats(a):
+    con=DB.connect(a.db); DB.init(con)
+    s=DB.stats(con, today().isoformat())
+    print(f"📊 total={s['total']} due={s['due']} mastered={s['mastered']}")
+
+def cmd_today(a):
+    con=DB.connect(a.db); DB.init(con)
+    reviews = DB.due_reviews(con, today().isoformat(), a.reviews)
+    new = DB.next_new_by_plan(con, a.solved_upto, a.new)
+
+    print(f"📅 Today (solved_upto={a.solved_upto}, reviews={len(reviews)}/{a.reviews}, new={len(new)}/{a.new})")
+    if reviews:
+        print("\n🌀 Reviews")
+        for r in reviews: print(" - " + fmt(r))
+    if new:
+        print("\n🆕 New")
+        for r in new: print(" - " + fmt(r))
+    if not reviews and not new:
+        print("🎉 Nothing scheduled.")
+
+def cmd_grade(a):
+    con=DB.connect(a.db); DB.init(con)
+    row=DB.by_lc(con,a.lc)
+    if not row: raise SystemExit("❌ not found. import plan first.")
+    q=q_from(a.quality); t=today()
+    s=SRS(reps=int(row["reps"]),lapses=int(row["lapses"]),interval=int(row["interval"]),ease=float(row["ease"]),due=t)
+    ns=sm2(s,q,t)
+    DB.add_review(con,int(row["id"]),now_iso(),q,a.note)
+    DB.save_srs(con,int(row["id"]),ns.reps,ns.lapses,ns.interval,ns.ease,ns.due.isoformat(),now_iso())
+    print(f"✅ {row['lc_num']} {row['title']} | q={q} -> due={ns.due} interval={ns.interval} reps={ns.reps} ease={ns.ease:.2f}")
+
+def cmd_session(a):
+    con=DB.connect(a.db); DB.init(con)
+    reviews = DB.due_reviews(con, today().isoformat(), a.reviews)
+    new = DB.next_new_by_plan(con, a.solved_upto, a.new)
+    pool = list(reviews) + list(new)
+    if not pool:
+        print("🎉 Nothing scheduled."); return
+    print("🧠 Session: easy/hard/again or 0..5. Enter=skip, q=quit")
+    for i,r in enumerate(pool,1):
+        print(f"\n[{i}/{len(pool)}] " + fmt(r))
+        while True:
+            inp=input("grade> ").strip().lower()
+            if inp in ("q","quit","exit"):
+                print("🛑 quit"); return
+            if inp=="" or inp in ("s","skip"):
+                break
+            try:
+                q=q_from(inp)
+            except SystemExit as e:
+                print(str(e)); continue
+            t=today()
+            s=SRS(reps=int(r["reps"]),lapses=int(r["lapses"]),interval=int(r["interval"]),ease=float(r["ease"]),due=t)
+            ns=sm2(s,q,t)
+            DB.add_review(con,int(r["id"]),now_iso(),q,None)
+            DB.save_srs(con,int(r["id"]),ns.reps,ns.lapses,ns.interval,ns.ease,ns.due.isoformat(),now_iso())
+            print(f"-> due={ns.due} interval={ns.interval} reps={ns.reps} ease={ns.ease:.2f}")
+            break
+    print("✅ session done")
+
+def main()->None:
+    p=argparse.ArgumentParser(prog="lcsrs", description="LeetCode SRS CLI (offline, plan-order new)")
+    p.add_argument("--db", default=None, help="DB path (default ~/.local/share/lcsrs/lcsrs.db)")
+    p.add_argument("-v","--version", action="store_true")
+    sub=p.add_subparsers(dest="cmd", required=False)
+
+    sp=sub.add_parser("init"); sp.set_defaults(f=cmd_init)
+    sp=sub.add_parser("import"); sp.add_argument("file"); sp.set_defaults(f=cmd_import)
+    sp=sub.add_parser("stats"); sp.set_defaults(f=cmd_stats)
+
+    sp=sub.add_parser("today")
+    sp.add_argument("--solved-upto", type=int, default=int(os.environ.get("LCSRS_SOLVED_UPTO","153")))
+    sp.add_argument("--reviews", type=int, default=int(os.environ.get("LCSRS_REVIEWS","3")))
+    sp.add_argument("--new", type=int, default=int(os.environ.get("LCSRS_NEW","1")))
+    sp.set_defaults(f=cmd_today)
+
+    sp=sub.add_parser("grade")
+    sp.add_argument("lc", type=int)
+    sp.add_argument("quality")
+    sp.add_argument("--note", default=None)
+    sp.set_defaults(f=cmd_grade)
+
+    sp=sub.add_parser("session")
+    sp.add_argument("--solved-upto", type=int, default=int(os.environ.get("LCSRS_SOLVED_UPTO","153")))
+    sp.add_argument("--reviews", type=int, default=int(os.environ.get("LCSRS_REVIEWS","3")))
+    sp.add_argument("--new", type=int, default=int(os.environ.get("LCSRS_NEW","1")))
+    sp.set_defaults(f=cmd_session)
+
+    a=p.parse_args()
+    if a.version: print(f"lcsrs {VERSION}"); return
+    if not a.cmd: p.print_help(); return
+    a.f(a)
+
+if __name__=="__main__":
+    main()
