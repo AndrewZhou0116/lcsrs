@@ -1,1 +1,1 @@
-##A tiny CLI script for tracking LeetCode practice + spaced repetition
+##A CLI script for tracking LeetCode practice + spaced repetition
