@@ -10,3 +10,8 @@ _bak_*/
 *.db-*
 *.sqlite*
 .DS_Store
+
+# backups
+_bak/
+.bak_*/
+
