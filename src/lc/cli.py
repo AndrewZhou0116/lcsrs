@@ -3,7 +3,7 @@ import typer
 from rich import print as rprint
 from lc.db import DEFAULT_DB_PATH, init_db
 from .importer import import_plan
-
+from .show import load_show
 
 app = typer.Typer(help="LeetCode SRS CLI (Plan+Cursor+SRS)")
 
@@ -30,6 +30,25 @@ def import_(plan: Path = typer.Argument(..., help="Path to plan.txt"),
     """Import plan.txt into problems table (authoritative plan_order)."""
     n, last_order = import_plan(db, plan)
     rprint(f"[bold cyan]OK[/bold cyan] imported {n} problems (last plan_order={last_order})")
+@app.command()
+def show(db: Path = typer.Option(DEFAULT_DB_PATH, "--db", help="Path to sqlite db file")):
+    """Show today's NEW + REVIEW (cursor only affects NEW)."""
+    new_items, review_items = load_show(db)
+
+    rprint("[bold]NEW[/bold]")
+    if not new_items:
+        rprint("  (none)")
+    else:
+        for it in new_items:
+            rprint(f"  {it.lc_num}  {it.title}")
+
+    rprint("")
+    rprint("[bold]REVIEW[/bold]")
+    if not review_items:
+        rprint("  (none)")
+    else:
+        for it in review_items:
+            rprint(f"  {it.lc_num}  {it.title}")
 
 def main():
     app()
