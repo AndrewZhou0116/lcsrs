@@ -2,12 +2,7 @@
 
 A CLI for LeetCode practice tracking with a plan order + spaced repetition.
 
-```bash
-# install (dev)
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-
+```
 # first time
 lc init
 lc import plan.txt
