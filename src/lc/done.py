@@ -7,6 +7,26 @@ from typing import Optional, Tuple
 from .db import connect, tx, get_meta, set_meta
 from .srs import ReviewState, next_state
 
+RETIRE_EASY_STREAK = 3
+
+def _should_retire(conn, lc_num: int, streak: int = RETIRE_EASY_STREAK) -> bool:
+    rows = conn.execute(
+        """
+        SELECT grade
+        FROM review_logs
+        WHERE lc_num = ?
+          AND grade != 'seed'
+        ORDER BY reviewed_at DESC, id DESC
+        LIMIT ?;
+        """,
+        (lc_num, streak),
+    ).fetchall()
+
+    if len(rows) < streak:
+        return False
+    return all(r["grade"] == "easy" for r in rows)
+
+
 def get_meta(conn, key: str, default: str) -> str:
     row = conn.execute("SELECT value FROM meta WHERE key=?;", (key,)).fetchone()
     return row["value"] if row else default
@@ -131,9 +151,27 @@ def apply_done(db_path: Path, lc_num: int, grade: str, note: Optional[str]) -> T
             ),
         )
 
-        # cursor 只管 NEW：done 之后自动推进到下一个 NEW（从当前 cursor 起）
+        # retire rule: 3 consecutive easy -> retired
+
+
+        if grade != "easy":
+            conn.execute(
+                "UPDATE reviews SET status='active', updated_at=? WHERE lc_num=?;",
+                (now, lc_num),
+    )
+
+
+        if nxt.easy_streak >= RETIRE_EASY_STREAK:
+            conn.execute(
+                "UPDATE reviews SET status='retired', updated_at=? WHERE lc_num=?;",
+                (now, lc_num),
+    )
+
+
+
         _advance_cursor_to_next_new(conn)
 
     conn.close()
     return prev_due, nxt.due_at
+
 
