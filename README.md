@@ -1,19 +1,9 @@
-# leetcode-log
-
-
-```
-# first time
-lc init
-lc import plan.txt
-lc show
-
-# daily
-lc open
-lc done 1011 good
-lc history --n 10
-lc stats
-
-# move NEW cursor (start from the middle)
-lc cursor set 1011
-# optional: seed earlier problems into REVIEW (due now)
-lc mark-done-before 1011 --force
+## Features
+- **NEW + REVIEW** daily view: `lc show`
+- Mark progress + schedule next review: `lc done <lc_num> [again|hard|good|easy]`
+- Optional notes: `lc done <lc_num> ... --note "..."` (or `lc note <lc_num> "..."` if enabled)
+- Cursor control for NEW start point: `lc cursor set <lc_num>`
+- Stats overview: `lc stats`
+- History / logs: `lc history`
+- Open LeetCode page: `lc open`
+- **Retire rule**: `easy` streak >= 3 ⇒ `retired` (auto-unretire on non-`easy` grade)
